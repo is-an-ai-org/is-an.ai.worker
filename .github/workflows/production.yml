@@ -3,7 +3,7 @@ name: Production Deployment
 on:
   push:
     branches:
-      - master
+      - main
     paths:
       - src/**
       - wrangler.jsonc
