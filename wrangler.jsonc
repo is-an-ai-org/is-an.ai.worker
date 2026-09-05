@@ -34,10 +34,10 @@
         // --- org 이전 스위치 -------------------------------------------
         // 새 org로 넘어가는 날 이 네 값만 바꾸고 배포한다. 코드는 안 건드린다.
         // GitHub App을 새로 만들면 GITHUB_BOT_EMAIL의 숫자(앱 봇 계정 ID)가 바뀐다.
-        "GITHUB_OWNER": "is-an-ai",
+        "GITHUB_OWNER": "is-an-ai-org",
         "GITHUB_REPO": "is-an.ai",
-        "GITHUB_BOT_NAME": "is-an.ai[bot]",
-        "GITHUB_BOT_EMAIL": "252833244+is-an-ai-bot[bot]@users.noreply.github.com",
+        "GITHUB_BOT_NAME": "is-an-ai-org-bot[bot]",
+        "GITHUB_BOT_EMAIL": "323575661+is-an-ai-org-bot[bot]@users.noreply.github.com",
         "APP_URL": "https://api.is-an.ai",
         // "JWT_SECRET": "IS_IN_PROD_SECRET",
         "JWT_EXPIRES_IN": "120h",
@@ -74,10 +74,10 @@
         // --- org 이전 스위치 -------------------------------------------
         // 새 org로 넘어가는 날 이 네 값만 바꾸고 배포한다. 코드는 안 건드린다.
         // GitHub App을 새로 만들면 GITHUB_BOT_EMAIL의 숫자(앱 봇 계정 ID)가 바뀐다.
-        "GITHUB_OWNER": "is-an-ai",
+        "GITHUB_OWNER": "is-an-ai-org",
         "GITHUB_REPO": "is-an.ai",
-        "GITHUB_BOT_NAME": "is-an.ai[bot]",
-        "GITHUB_BOT_EMAIL": "252833244+is-an-ai-bot[bot]@users.noreply.github.com",
+        "GITHUB_BOT_NAME": "is-an-ai-org-bot[bot]",
+        "GITHUB_BOT_EMAIL": "323575661+is-an-ai-org-bot[bot]@users.noreply.github.com",
         "APP_URL": "http://localhost:8787",
         "JWT_SECRET": "IT_IS_DEV_SECRET",
         "JWT_EXPIRES_IN": "120h",
