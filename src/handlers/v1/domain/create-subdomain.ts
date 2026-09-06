@@ -1,12 +1,9 @@
 import { Context } from 'hono';
 import { AppType } from '@/binding';
-import { subdomains } from '@drizzle/schema/domain';
 import { nanoid } from 'nanoid';
 import { AppError, ErrorCode } from '@utils/error';
-import { eq, sql } from 'drizzle-orm';
 import { Github } from '@/utils/github/github';
 import { GithubSubDomain, Record, recordSchema } from '@/utils/github/github.dto';
-import { User, users } from '@drizzle/schema/users';
 import { z } from 'zod';
 import { blackListedSubdomainRegexes, blackListedSubdomains } from '@/utils/blacklist';
 
@@ -21,7 +18,7 @@ interface CreateSubdomainResponse {
   subdomainName: string;
   description: string;
   record: Record[];
-  ownerId: string;
+  ownerId: string | null;
 }
 
 // Zod Schemas
@@ -48,11 +45,7 @@ export async function handleCreateSubdomain(c: Context<AppType>): Promise<Respon
     throw new AppError(401, ErrorCode.UNAUTHORIZED, 'Authentication required');
   }
 
-  const existingSubdomain = await db
-    .select()
-    .from(subdomains)
-    .where(sql`lower(${subdomains.name}) = lower(${subdomainName})`)
-    .get();
+  const existingSubdomain = await db.findSubdomainByName(subdomainName);
 
   if (existingSubdomain) {
     throw new AppError(400, ErrorCode.SUBDOMAIN_ALREADY_EXISTS, 'Subdomain already exists');
@@ -69,13 +62,9 @@ export async function handleCreateSubdomain(c: Context<AppType>): Promise<Respon
     );
   }
 
-  const userDomains = await db
-    .select()
-    .from(subdomains)
-    .where(eq(subdomains.ownerId, user.userId))
-    .all();
+  const userDomainCount = await db.countSubdomainsByOwner(user.userId);
 
-  if (userDomains.length >= USER_MAX_SUBDOMAINS) {
+  if (userDomainCount >= USER_MAX_SUBDOMAINS) {
     throw new AppError(
       400,
       ErrorCode.MAX_SUBDOMAIN_REACHED,
@@ -94,23 +83,20 @@ export async function handleCreateSubdomain(c: Context<AppType>): Promise<Respon
 
   await Github.createDomainDeterminationContent(subdomainName, subDomain, githubToken);
 
-  const subdomain = await db
-    .insert(subdomains)
-    .values({
-      id: nanoid(),
-      name: subdomainName,
-      description: description,
-      record: JSON.stringify(record),
-      ownerId: user.userId,
-    })
-    .returning();
+  const subdomain = await db.createSubdomain({
+    id: nanoid(),
+    name: subdomainName,
+    description: description,
+    record: JSON.stringify(record),
+    ownerId: user.userId,
+  });
 
   const response: CreateSubdomainResponse = {
-    subdomainId: subdomain[0].id,
-    subdomainName: subdomain[0].name,
-    description: subdomain[0].description,
-    record: JSON.parse(subdomain[0].record),
-    ownerId: subdomain[0].ownerId,
+    subdomainId: subdomain.id,
+    subdomainName: subdomain.name,
+    description: subdomain.description,
+    record: JSON.parse(subdomain.record),
+    ownerId: subdomain.ownerId,
   };
 
   return c.json(response);

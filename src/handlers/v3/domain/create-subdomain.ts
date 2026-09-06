@@ -1,9 +1,7 @@
 import { Context } from 'hono';
 import { AppType } from '@/binding';
-import { subdomains } from '@drizzle/schema/domain';
 import { nanoid } from 'nanoid';
 import { AppError, ErrorCode } from '@utils/error';
-import { eq, sql } from 'drizzle-orm';
 import { Github } from '@/utils/github/github';
 import { GithubSubDomain, Record, recordSchema } from '@/utils/github/github.dto';
 import { z } from 'zod';
@@ -55,11 +53,7 @@ export async function handleCreateSubdomain(c: Context<AppType>): Promise<Respon
     throw new AppError(400, ErrorCode.INVALID_SUBDOMAIN_NAME, validationResult.error);
   }
 
-  const existingSubdomain = await db
-    .select()
-    .from(subdomains)
-    .where(sql`lower(${subdomains.name}) = lower(${subdomainName})`)
-    .get();
+  const existingSubdomain = await db.findSubdomainByName(subdomainName);
 
   if (existingSubdomain) {
     throw new AppError(400, ErrorCode.SUBDOMAIN_ALREADY_EXISTS, 'Subdomain already exists');
@@ -72,11 +66,7 @@ export async function handleCreateSubdomain(c: Context<AppType>): Promise<Respon
       throw new AppError(400, ErrorCode.INVALID_SUBDOMAIN_NAME, vendorRecordValidation.error!);
     }
 
-    const baseSubdomainRecord = await db
-      .select()
-      .from(subdomains)
-      .where(sql`lower(${subdomains.name}) = lower(${validationResult.baseSubdomain})`)
-      .get();
+    const baseSubdomainRecord = await db.findSubdomainByName(validationResult.baseSubdomain);
 
     if (!baseSubdomainRecord) {
       throw new AppError(
@@ -95,14 +85,10 @@ export async function handleCreateSubdomain(c: Context<AppType>): Promise<Respon
     }
   }
 
-  const userDomains = await db
-    .select()
-    .from(subdomains)
-    .where(eq(subdomains.ownerId, user.userId))
-    .all();
+  const userDomains = await db.findSubdomainsByOwner(user.userId);
 
   // Vendor subdomains don't count toward the limit
-  const regularDomains = userDomains.filter((d: { name: string }) => !d.name.startsWith('_'));
+  const regularDomains = userDomains.filter((d) => !d.name.startsWith('_'));
   if (!validationResult.isVendor && regularDomains.length >= USER_MAX_SUBDOMAINS) {
     throw new AppError(
       400,
@@ -112,9 +98,11 @@ export async function handleCreateSubdomain(c: Context<AppType>): Promise<Respon
   }
 
   const subDomain: GithubSubDomain = {
-    description: description || (validationResult.isVendor
-      ? `${validationResult.vendorName} verification for ${validationResult.baseSubdomain}`
-      : ''),
+    description:
+      description ||
+      (validationResult.isVendor
+        ? `${validationResult.vendorName} verification for ${validationResult.baseSubdomain}`
+        : ''),
     owner: {
       github_username: user.userId,
       email: user.name + '@noreply.com',
@@ -124,22 +112,19 @@ export async function handleCreateSubdomain(c: Context<AppType>): Promise<Respon
 
   await Github.createDomainDeterminationContent(subdomainName, subDomain, githubToken);
 
-  const subdomain = await db
-    .insert(subdomains)
-    .values({
-      id: nanoid(),
-      name: subdomainName,
-      description: subDomain.description,
-      record: JSON.stringify(record),
-      ownerId: user.userId,
-    })
-    .returning();
+  const subdomain = await db.createSubdomain({
+    id: nanoid(),
+    name: subdomainName,
+    description: subDomain.description,
+    record: JSON.stringify(record),
+    ownerId: user.userId,
+  });
 
   const response: CreateSubdomainResponse = {
-    subdomainId: subdomain[0].id,
-    subdomainName: subdomain[0].name,
-    description: subdomain[0].description,
-    record: JSON.parse(subdomain[0].record),
+    subdomainId: subdomain.id,
+    subdomainName: subdomain.name,
+    description: subdomain.description,
+    record: JSON.parse(subdomain.record),
     ownerId: user.userId,
   };
 

@@ -1,8 +1,6 @@
 import { Context } from 'hono';
 import { AppError, ErrorCode } from '@utils/error';
 import { generateToken } from '@utils/jwt';
-import { users } from '@drizzle/schema/users';
-import { eq } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { AppType } from '@/binding';
 
@@ -50,9 +48,7 @@ export async function handleDeviceAuth(c: Context<AppType>): Promise<Response> {
   const db = c.get('db');
 
   // Find or create user (same logic as OAuth callback)
-  const existingUser = await db.query.users.findFirst({
-    where: eq(users.providerId, githubUser.id.toString()),
-  });
+  const existingUser = await db.findUserByProviderId(githubUser.id.toString());
 
   let userId: string;
   let userName: string;
@@ -64,20 +60,18 @@ export async function handleDeviceAuth(c: Context<AppType>): Promise<Response> {
     userEmail = existingUser.email;
   } else {
     const email = githubUser.email || `${githubUser.login}@users.noreply.github.com`;
-    const newUser = await db
-      .insert(users)
-      .values({
-        id: nanoid(),
-        name: githubUser.name || githubUser.login,
-        email,
-        provider: 'github',
-        providerId: githubUser.id.toString(),
-      })
-      .returning();
+    const newUser = await db.createUser({
+      id: nanoid(),
+      name: githubUser.name || githubUser.login,
+      email,
+      provider: 'github',
+      providerId: githubUser.id.toString(),
+      hashedPassword: null,
+    });
 
-    userId = newUser[0].id;
-    userName = newUser[0].name;
-    userEmail = newUser[0].email;
+    userId = newUser.id;
+    userName = newUser.name;
+    userEmail = newUser.email;
   }
 
   const token = await generateToken(

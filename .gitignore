@@ -34,3 +34,6 @@ lerna-debug.log*
 
 # eslint cache
 .eslintcache
+terraform.tfvars
+infra/.terraform/
+infra/terraform.tfstate*

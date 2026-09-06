@@ -15,19 +15,9 @@ import {
   handleUpdateSubdomain,
   updateSubdomainRequestSchema,
 } from '@/handlers/v3/domain/update-subdomain';
-import { cache } from 'hono/cache';
-
 const domain = new Hono<AppType>();
 
-// Public routes
-domain.get(
-  '/',
-  cache({
-    cacheName: '/v3/domain',
-    cacheControl: 'max-age=600',
-  }),
-  handleFindAllSubdomain
-);
+domain.get('/', handleFindAllSubdomain);
 domain.get('/id/:id', handleFindByIdSubdomain);
 domain.get('/name/:subdomainName', handleFindByNameSubdomain);
 

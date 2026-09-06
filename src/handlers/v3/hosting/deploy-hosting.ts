@@ -1,19 +1,18 @@
 import { Context } from 'hono';
 import { AppType } from '@/binding';
-import { subdomains } from '@drizzle/schema/domain';
 import { nanoid } from 'nanoid';
 import { AppError, ErrorCode } from '@utils/error';
-import { sql } from 'drizzle-orm';
 import { validateSubdomainName } from '@/utils/subdomain';
 import { Github } from '@/utils/github/github';
 import { GithubSubDomain, Record as DNSRecord } from '@/utils/github/github.dto';
-import type { R2Bucket } from '@cloudflare/workers-types';
+import type { IObjectStorage } from '@/adapters/types';
 
-const HOSTING_WORKER_DOMAIN = 'is-an-ai-hosting.doridori.workers.dev';
+const HOSTING_WORKER_DOMAIN = 'd2t4ubtfjuejkc.cloudfront.net';
 
 const MAX_TOTAL_SIZE = 50 * 1024 * 1024; // 50MB
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const MAX_FILE_COUNT = 1000;
+const USER_MAX_SUBDOMAINS = 5;
 
 const CONTENT_TYPE_MAP: Record<string, string> = {
   html: 'text/html',
@@ -47,12 +46,12 @@ interface DeployResult {
   totalSize: number;
 }
 
-async function deleteR2Prefix(bucket: R2Bucket, prefix: string): Promise<void> {
+async function deleteStoragePrefix(storage: IObjectStorage, prefix: string): Promise<void> {
   let cursor: string | undefined;
   do {
-    const listed = await bucket.list({ prefix, cursor });
+    const listed = await storage.list({ prefix, cursor });
     if (listed.objects.length > 0) {
-      await Promise.all(listed.objects.map((obj) => bucket.delete(obj.key)));
+      await Promise.all(listed.objects.map((obj) => storage.delete(obj.key)));
     }
     cursor = listed.truncated ? listed.cursor : undefined;
   } while (cursor);
@@ -89,7 +88,11 @@ async function deployHosting(c: Context<AppType>, isUpdate: boolean): Promise<Re
       continue;
     }
 
-    const file = value as unknown as { arrayBuffer(): Promise<ArrayBuffer>; size: number; name: string };
+    const file = value as unknown as {
+      arrayBuffer(): Promise<ArrayBuffer>;
+      size: number;
+      name: string;
+    };
     const filepath = file.name || key;
     const data = await file.arrayBuffer();
     const size = data.byteLength;
@@ -115,25 +118,29 @@ async function deployHosting(c: Context<AppType>, isUpdate: boolean): Promise<Re
   }
 
   if (files.length > MAX_FILE_COUNT) {
-    throw new AppError(400, ErrorCode.TOO_MANY_FILES, `Maximum ${MAX_FILE_COUNT} files per deployment`);
+    throw new AppError(
+      400,
+      ErrorCode.TOO_MANY_FILES,
+      `Maximum ${MAX_FILE_COUNT} files per deployment`
+    );
   }
 
   if (!hasIndexHtml) {
     throw new AppError(400, ErrorCode.INDEX_HTML_REQUIRED, 'Deployment must contain index.html');
   }
 
-  const existingSubdomain = await db
-    .select()
-    .from(subdomains)
-    .where(sql`lower(${subdomains.name}) = lower(${name})`)
-    .get();
+  const existingSubdomain = await db.findSubdomainByName(name);
 
   if (isUpdate) {
     if (!existingSubdomain) {
       throw new AppError(404, ErrorCode.HOSTING_NOT_FOUND, 'Hosting not found');
     }
     if (existingSubdomain.ownerId !== user.userId) {
-      throw new AppError(403, ErrorCode.FORBIDDEN, "You don't have permission to update this hosting");
+      throw new AppError(
+        403,
+        ErrorCode.FORBIDDEN,
+        "You don't have permission to update this hosting"
+      );
     }
   } else {
     if (existingSubdomain) {
@@ -144,19 +151,29 @@ async function deployHosting(c: Context<AppType>, isUpdate: boolean): Promise<Re
     if (!validationResult.isValid && validationResult.error) {
       throw new AppError(400, ErrorCode.INVALID_SUBDOMAIN_NAME, validationResult.error);
     }
+
+    const userDomains = await db.findSubdomainsByOwner(user.userId);
+    const regularDomains = userDomains.filter((d) => !d.name.startsWith('_'));
+    if (regularDomains.length >= USER_MAX_SUBDOMAINS) {
+      throw new AppError(
+        400,
+        ErrorCode.MAX_SUBDOMAIN_REACHED,
+        `User has reached the maximum number of domains (${USER_MAX_SUBDOMAINS})`
+      );
+    }
   }
 
-  const bucket = c.env.SITES_BUCKET;
+  const storage = c.get('storage');
   const prefix = `sites/${name}/`;
 
   // Clean up old files
-  await deleteR2Prefix(bucket, prefix);
+  await deleteStoragePrefix(storage, prefix);
 
   // Upload all files
   await Promise.all(
     files.map((file) =>
-      bucket.put(`${prefix}${file.path}`, file.data, {
-        httpMetadata: { contentType: getContentType(file.path) },
+      storage.put(`${prefix}${file.path}`, file.data, {
+        contentType: getContentType(file.path),
       })
     )
   );
@@ -164,7 +181,7 @@ async function deployHosting(c: Context<AppType>, isUpdate: boolean): Promise<Re
   const cnameRecord: DNSRecord[] = [{ type: 'CNAME' as const, value: HOSTING_WORKER_DOMAIN }];
 
   if (!isUpdate) {
-    // Create GitHub record file (triggers CI → PowerDNS → HE zone transfer)
+    // Create GitHub record file (triggers CI -> PowerDNS -> HE zone transfer)
     const githubToken = await Github.createTokenforGitHubApp(
       c.env.GITHUB_APP_SECRET,
       c.env.GITHUB_APP_CLIENT_ID,
@@ -182,7 +199,7 @@ async function deployHosting(c: Context<AppType>, isUpdate: boolean): Promise<Re
 
     await Github.createDomainDeterminationContent(name, subDomain, githubToken);
 
-    await db.insert(subdomains).values({
+    await db.createSubdomain({
       id: nanoid(),
       name,
       description: 'Static site hosting',
@@ -190,10 +207,7 @@ async function deployHosting(c: Context<AppType>, isUpdate: boolean): Promise<Re
       ownerId: user.userId,
     });
   } else {
-    await db
-      .update(subdomains)
-      .set({ updatedAt: new Date().toISOString() })
-      .where(sql`lower(${subdomains.name}) = lower(${name})`);
+    await db.updateSubdomain(name, {});
   }
 
   const result: DeployResult = {

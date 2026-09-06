@@ -1,10 +1,8 @@
 import { Context } from 'hono';
 import { AppType } from '@/binding';
-import { subdomains } from '@drizzle/schema/domain';
 import { AppError, ErrorCode } from '@utils/error';
-import { eq, like } from 'drizzle-orm';
 
-const HOSTING_WORKER_DOMAIN = 'is-an-ai-hosting.doridori.workers.dev';
+const HOSTING_WORKER_DOMAIN = 'd2t4ubtfjuejkc.cloudfront.net';
 
 export async function handleGetMyHostings(c: Context<AppType>): Promise<Response> {
   const db = c.get('db');
@@ -14,15 +12,9 @@ export async function handleGetMyHostings(c: Context<AppType>): Promise<Response
     throw new AppError(401, ErrorCode.UNAUTHORIZED, 'Authentication required');
   }
 
-  const userSubdomains = await db
-    .select()
-    .from(subdomains)
-    .where(eq(subdomains.ownerId, user.userId))
-    .all();
+  const userSubdomains = await db.findSubdomainsByOwner(user.userId);
 
-  const hostingSubs = userSubdomains.filter((sub) =>
-    sub.record.includes(HOSTING_WORKER_DOMAIN)
-  );
+  const hostingSubs = userSubdomains.filter((sub) => sub.record.includes(HOSTING_WORKER_DOMAIN));
 
   const results = hostingSubs.map((sub) => ({
     subdomain: sub.name,

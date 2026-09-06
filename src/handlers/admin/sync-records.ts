@@ -1,10 +1,8 @@
 import { Context } from 'hono';
 import { AppType } from '@/binding';
-import { subdomains } from '@drizzle/schema/domain';
-import { users } from '@drizzle/schema/users';
-import { eq, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { AppError, ErrorCode } from '@utils/error';
+import type { IDatabase } from '@/adapters/types';
 
 interface RecordEntry {
   type: string;
@@ -30,7 +28,7 @@ interface SyncRequest {
 }
 
 /**
- * Sync record changes from GitHub repo to D1 database.
+ * Sync record changes from GitHub repo to database.
  * Called by deploy-dns GitHub Action after merging PRs.
  *
  * POST /admin/sync-records
@@ -56,17 +54,13 @@ export async function handleSyncRecords(c: Context<AppType>): Promise<Response> 
   for (const record of body.added || []) {
     if (!record.content) continue;
     try {
-      const existing = await db
-        .select()
-        .from(subdomains)
-        .where(sql`lower(${subdomains.name}) = lower(${record.name})`)
-        .get();
+      const existing = await db.findSubdomainByName(record.name);
 
       if (existing) continue; // Already exists in DB
 
       const ownerId = await resolveOwnerId(db, record.content.owner.email);
 
-      await db.insert(subdomains).values({
+      await db.createSubdomain({
         id: nanoid(),
         name: record.name,
         description: record.content.description || '',
@@ -83,24 +77,17 @@ export async function handleSyncRecords(c: Context<AppType>): Promise<Response> 
   for (const record of body.modified || []) {
     if (!record.content) continue;
     try {
-      const existing = await db
-        .select()
-        .from(subdomains)
-        .where(sql`lower(${subdomains.name}) = lower(${record.name})`)
-        .get();
+      const existing = await db.findSubdomainByName(record.name);
 
       if (existing) {
-        await db
-          .update(subdomains)
-          .set({
-            description: record.content.description || existing.description,
-            record: JSON.stringify(record.content.record),
-          })
-          .where(eq(subdomains.id, existing.id));
+        await db.updateSubdomain(record.name, {
+          description: record.content.description || existing.description,
+          record: JSON.stringify(record.content.record),
+        });
       } else {
-        // Record exists in repo but not DB — create it
+        // Record exists in repo but not DB -- create it
         const ownerId = await resolveOwnerId(db, record.content.owner.email);
-        await db.insert(subdomains).values({
+        await db.createSubdomain({
           id: nanoid(),
           name: record.name,
           description: record.content.description || '',
@@ -117,7 +104,7 @@ export async function handleSyncRecords(c: Context<AppType>): Promise<Response> 
   // Process deleted records
   for (const record of body.deleted || []) {
     try {
-      await db.delete(subdomains).where(sql`lower(${subdomains.name}) = lower(${record.name})`);
+      await db.deleteSubdomainByName(record.name);
       results.deleted++;
     } catch (e) {
       results.errors.push(`delete ${record.name}: ${e instanceof Error ? e.message : String(e)}`);
@@ -127,12 +114,8 @@ export async function handleSyncRecords(c: Context<AppType>): Promise<Response> 
   return c.json(results);
 }
 
-async function resolveOwnerId(db: any, email: string): Promise<string | null> {
+async function resolveOwnerId(db: IDatabase, email: string): Promise<string | null> {
   if (!email) return null;
-  const user = await db
-    .select()
-    .from(users)
-    .where(sql`lower(${users.email}) = lower(${email})`)
-    .get();
-  return user?.id || null;
+  const user = await db.findUserByEmail(email);
+  return user?.id ?? null;
 }

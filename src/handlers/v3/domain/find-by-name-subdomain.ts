@@ -1,19 +1,15 @@
 import { Context } from 'hono';
 import { AppType } from '@/binding';
-import { subdomains } from '@drizzle/schema/domain';
 import { AppError, ErrorCode } from '@utils/error';
-import { eq, sql } from 'drizzle-orm';
 import { Github } from '@/utils/github/github';
-import type { Subdomain } from '@drizzle/schema/domain';
-import { z } from 'zod';
-import { recordSchema, Record } from '@/utils/github/github.dto';
+import { Record } from '@/utils/github/github.dto';
 
 interface SubdomainResponse {
   subdomainId: string;
   subdomainName: string;
   description: string;
   record: Record;
-  ownerId: string;
+  ownerId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -27,12 +23,8 @@ export const handleFindByNameSubdomain = async (c: Context<AppType>): Promise<Re
     c.env.GITHUB_APP_INSTALLATION_ID
   );
 
-  // query subdomain by name
-  const subdomain = await db
-    .select()
-    .from(subdomains)
-    .where(sql`lower(${subdomains.name}) = lower(${subdomainName})`)
-    .get();
+  // query subdomain by name (case-insensitive internally)
+  const subdomain = await db.findSubdomainByName(subdomainName);
 
   if (!subdomain) {
     throw new AppError(404, ErrorCode.SUBDOMAIN_NOT_FOUND, 'Subdomain not found');
@@ -44,7 +36,7 @@ export const handleFindByNameSubdomain = async (c: Context<AppType>): Promise<Re
 
   // if the subdomain does not exist in GitHub, delete it from the DB
   if (!existsInGithub) {
-    await db.delete(subdomains).where(eq(subdomains.name, subdomainName));
+    await db.deleteSubdomainByName(subdomain.name);
     throw new AppError(404, ErrorCode.SUBDOMAIN_NOT_FOUND, 'Subdomain not found in GitHub');
   }
 

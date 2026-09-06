@@ -1,8 +1,6 @@
 import { Context } from 'hono';
 import { AppType } from '@/binding';
-import { subdomains } from '@drizzle/schema/domain';
 import { AppError, ErrorCode } from '@utils/error';
-import { eq } from 'drizzle-orm';
 import { Github } from '@/utils/github/github';
 
 export const handleDeleteSubdomain = async (c: Context<AppType>): Promise<Response> => {
@@ -20,11 +18,7 @@ export const handleDeleteSubdomain = async (c: Context<AppType>): Promise<Respon
     throw new AppError(401, ErrorCode.UNAUTHORIZED, 'Authentication required');
   }
 
-  const existingSubdomain = await db
-    .select()
-    .from(subdomains)
-    .where(eq(subdomains.name, subdomainName))
-    .get();
+  const existingSubdomain = await db.findSubdomainByName(subdomainName);
 
   if (!existingSubdomain) {
     throw new AppError(404, ErrorCode.SUBDOMAIN_NOT_FOUND, 'Subdomain not found');
@@ -50,7 +44,7 @@ export const handleDeleteSubdomain = async (c: Context<AppType>): Promise<Respon
 
   await Github.deleteDomainDeterminationContent(subdomainName, githubToken, githubContent.sha);
 
-  await db.delete(subdomains).where(eq(subdomains.name, subdomainName));
+  await db.deleteSubdomainByName(subdomainName);
 
   return c.json({ message: 'Subdomain deleted successfully' });
 };

@@ -1,11 +1,7 @@
 import { Context } from 'hono';
 import { AppType } from '@/binding';
-import { subdomains } from '@drizzle/schema/domain';
-import { AppError, ErrorCode } from '@utils/error';
-import { eq } from 'drizzle-orm';
 import { Github } from '@/utils/github/github';
-import type { Subdomain } from '@drizzle/schema/domain';
-import { z } from 'zod';
+import type { Subdomain } from '@/adapters/types';
 import { Record } from '@/utils/github/github.dto';
 
 interface SubdomainResponse {
@@ -13,7 +9,7 @@ interface SubdomainResponse {
   subdomainName: string;
   description: string;
   record: Record;
-  ownerId: string;
+  ownerId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -23,7 +19,7 @@ export const handleFindAllSubdomain = async (c: Context<AppType>): Promise<Respo
   const githubToken = c.env.GITHUB_PAT;
 
   // query all subdomains
-  const allSubdomains = await db.select().from(subdomains).all();
+  const allSubdomains = await db.findAllSubdomains();
 
   const allGithubSubdomains = await Github.getDomainDeterminationDirectory(githubToken);
 
@@ -32,7 +28,7 @@ export const handleFindAllSubdomain = async (c: Context<AppType>): Promise<Respo
     allSubdomains.map(async (subdomain: Subdomain) => {
       // if the subdomain does not exist in GitHub, delete it from the DB
       if (!allGithubSubdomains.includes(subdomain.name)) {
-        await db.delete(subdomains).where(eq(subdomains.name, subdomain.name));
+        await db.deleteSubdomainByName(subdomain.name);
         return null;
       }
 

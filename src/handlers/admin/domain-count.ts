@@ -1,8 +1,5 @@
 import { Context } from 'hono';
 import { AppType } from '@/binding';
-import { subdomains } from '@drizzle/schema/domain';
-import { users } from '@drizzle/schema/users';
-import { eq, sql } from 'drizzle-orm';
 import { AppError, ErrorCode } from '@utils/error';
 
 /**
@@ -29,31 +26,14 @@ export async function handleDomainCount(c: Context<AppType>): Promise<Response> 
 
   const db = c.get('db');
 
-  // Find user by email
-  const user = await db
-    .select()
-    .from(users)
-    .where(sql`lower(${users.email}) = lower(${email})`)
-    .get();
-
-  if (!user) {
-    // User not in DB — no domains registered via website
-    return c.json({ email, count: 0, limit: USER_MAX_SUBDOMAINS, allowed: true });
-  }
-
-  // Count non-vendor subdomains (vendor subdomains don't count toward limit)
-  const allDomains = await db
-    .select()
-    .from(subdomains)
-    .where(eq(subdomains.ownerId, user.id))
-    .all();
-
-  const regularCount = allDomains.filter((d: { name: string }) => !d.name.startsWith('_')).length;
+  const user = await db.findUserByEmail(email);
+  const domains = user ? await db.findSubdomainsByOwner(user.id) : [];
+  const count = domains.filter((domain) => !domain.name.startsWith('_')).length;
 
   return c.json({
     email,
-    count: regularCount,
+    count,
     limit: USER_MAX_SUBDOMAINS,
-    allowed: regularCount < USER_MAX_SUBDOMAINS,
+    allowed: count < USER_MAX_SUBDOMAINS,
   });
 }

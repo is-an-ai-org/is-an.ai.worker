@@ -64,7 +64,7 @@ export class Github {
   // org 이전을 '코드 변경'이 아니라 '설정 변경'으로 만든다.
   // 기본값은 현재 운영값이므로, 환경변수를 주지 않으면 동작이 이전과 완전히 동일하다.
   // GitHub App transfer가 불가능해 App을 새로 만들면 봇 계정 ID가 바뀌고,
-  // 그때 바꿔야 할 곳이 이 파일 안 7군데였다. 이제 wrangler vars 한 곳이다.
+  // GitHub 조직과 봇 정보는 Lambda 환경변수에서 주입한다.
   private static readonly DEFAULT_OWNER = 'is-an-ai-org';
   private static readonly DEFAULT_REPO = 'is-an.ai';
   private static readonly DEFAULT_BOT_NAME = 'is-an-ai-org-bot[bot]';

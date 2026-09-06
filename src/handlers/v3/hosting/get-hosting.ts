@@ -1,8 +1,6 @@
 import { Context } from 'hono';
 import { AppType } from '@/binding';
-import { subdomains } from '@drizzle/schema/domain';
 import { AppError, ErrorCode } from '@utils/error';
-import { sql } from 'drizzle-orm';
 
 export async function handleGetHosting(c: Context<AppType>): Promise<Response> {
   const name = c.req.param('name');
@@ -13,11 +11,7 @@ export async function handleGetHosting(c: Context<AppType>): Promise<Response> {
     throw new AppError(401, ErrorCode.UNAUTHORIZED, 'Authentication required');
   }
 
-  const existingSubdomain = await db
-    .select()
-    .from(subdomains)
-    .where(sql`lower(${subdomains.name}) = lower(${name})`)
-    .get();
+  const existingSubdomain = await db.findSubdomainByName(name);
 
   if (!existingSubdomain) {
     throw new AppError(404, ErrorCode.HOSTING_NOT_FOUND, 'Hosting not found');
@@ -27,14 +21,14 @@ export async function handleGetHosting(c: Context<AppType>): Promise<Response> {
     throw new AppError(403, ErrorCode.FORBIDDEN, "You don't have permission to view this hosting");
   }
 
-  const bucket = c.env.SITES_BUCKET;
+  const storage = c.get('storage');
   const prefix = `sites/${name}/`;
   let fileCount = 0;
   let totalSize = 0;
   let cursor: string | undefined;
 
   do {
-    const listed = await bucket.list({ prefix, cursor });
+    const listed = await storage.list({ prefix, cursor });
     for (const obj of listed.objects) {
       fileCount++;
       totalSize += obj.size;

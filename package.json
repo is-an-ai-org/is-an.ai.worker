@@ -1,37 +1,41 @@
 {
   "name": "is-an-ai-worker",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy --minify",
-    "cf-typegen": "wrangler types --env-interface CloudflareBindings",
+    "build": "bash scripts/build-lambda.sh",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test scripts/aws-runtime.test.mjs",
+    "deploy": "npm run build && aws lambda update-function-code --function-name is-an-ai-api --region ap-northeast-2 --zip-file fileb://dist/api-lambda.zip --query \"{FunctionName:FunctionName,LastModified:LastModified,LastUpdateStatus:LastUpdateStatus}\"",
     "lint": "eslint . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix",
     "format": "prettier --write \"src/**/*.ts\""
   },
   "dependencies": {
-    "@cloudflare/workers-types": "^4.20250517.0",
+    "@aws-sdk/client-dynamodb": "^3.1029.0",
+    "@aws-sdk/client-s3": "^3.1029.0",
+    "@aws-sdk/client-secrets-manager": "^3.1030.0",
+    "@aws-sdk/lib-dynamodb": "^3.1029.0",
+    "@aws-sdk/s3-request-presigner": "^3.1029.0",
     "@hono/zod-validator": "^0.6.0",
-    "@lucia-auth/adapter-sqlite": "^3.0.2",
-    "@lucia-auth/oauth": "^3.5.3",
     "dotenv": "^16.5.0",
     "drizzle-orm": "^0.43.1",
     "hono": "^4.7.9",
     "jose": "^6.0.11",
-    "lucia": "^3.2.2",
     "nanoid": "^5.1.5",
     "zod": "^3.25.30"
   },
   "devDependencies": {
+    "@types/aws-lambda": "^8.10.161",
     "@types/better-sqlite3": "^7.6.13",
     "@typescript-eslint/eslint-plugin": "^8.32.1",
     "@typescript-eslint/parser": "^8.32.1",
     "bun-types": "^1.2.13",
     "drizzle-kit": "^0.31.1",
+    "esbuild": "^0.28.0",
     "eslint": "^9.27.0",
     "eslint-config-prettier": "^10.1.5",
     "eslint-plugin-prettier": "^5.4.0",
     "prettier": "^3.5.3",
     "typescript-eslint": "^8.38.0",
-    "wrangler": "^4.4.0"
+    "typescript": "^5.7.0"
   }
 }

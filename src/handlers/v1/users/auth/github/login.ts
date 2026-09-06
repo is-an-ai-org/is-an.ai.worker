@@ -2,7 +2,6 @@ import { Context } from 'hono';
 import { AppError, ErrorCode } from '@/utils/error';
 import { nanoid } from 'nanoid';
 import { AppType } from '@/binding';
-import { getCookie, setCookie } from 'hono/cookie';
 
 const GITHUB_AUTH_URL = 'https://github.com/login/oauth/authorize';
 
@@ -13,18 +12,20 @@ export async function handleGitHubLogin(c: Context<AppType>): Promise<Response> 
     const clientType = c.req.query('client_type');
     const state = nanoid();
 
-    // Cache에 state와 clientType 저장 (1분 유효)
-    await c.env.AUTH_STORE.put(
+    const stateStore = c.get('stateStore');
+
+    // Store state and clientType (valid for 1 minute)
+    await stateStore.put(
       `oauth_state:${state}`,
       JSON.stringify({
         state,
         clientType,
         timestamp: Date.now(),
       }),
-      { expirationTtl: 60 }
+      { ttlSeconds: 60 }
     );
 
-    // GitHub OAuth 페이지로 리다이렉트
+    // Redirect to GitHub OAuth page
     const authUrl = new URL(GITHUB_AUTH_URL);
     authUrl.searchParams.append('client_id', clientId);
     authUrl.searchParams.append('redirect_uri', redirectUri);

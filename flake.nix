@@ -6,18 +6,18 @@
   outputs = { self, nixpkgs }: 
   let
     pkgs = import nixpkgs { system = "aarch64-darwin"; };
-    bun = pkgs.bun;
+    node = pkgs.nodejs_22;
   in {
     devShells.aarch64-darwin.default = pkgs.mkShell {
       buildInputs = [
-        bun
+        node
+        pkgs.zip
       ];
       
       shellHook = ''
         echo "Is An AI Environment"
-        echo "Enter Bun $(${bun}/bin/bun --version)"
+        echo "Node $(${node}/bin/node --version)"
       '';
     };
   };
 }
-

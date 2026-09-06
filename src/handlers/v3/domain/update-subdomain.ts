@@ -1,8 +1,6 @@
 import { Context } from 'hono';
 import { AppType } from '@/binding';
-import { subdomains } from '@drizzle/schema/domain';
 import { AppError, ErrorCode } from '@utils/error';
-import { eq } from 'drizzle-orm';
 import { Github } from '@/utils/github/github';
 import { GithubSubDomain, Record } from '@/utils/github/github.dto';
 import { z } from 'zod';
@@ -44,11 +42,7 @@ export const handleUpdateSubdomain = async (c: Context<AppType>): Promise<Respon
     throw new AppError(401, ErrorCode.UNAUTHORIZED, 'Authentication required');
   }
 
-  const existingSubdomain = await db
-    .select()
-    .from(subdomains)
-    .where(eq(subdomains.name, subdomainName))
-    .get();
+  const existingSubdomain = await db.findSubdomainByName(subdomainName);
 
   if (!existingSubdomain) {
     throw new AppError(404, ErrorCode.SUBDOMAIN_NOT_FOUND, 'Subdomain not found');
@@ -96,21 +90,21 @@ export const handleUpdateSubdomain = async (c: Context<AppType>): Promise<Respon
     githubContent.sha
   );
 
-  const updatedSubdomain = await db
-    .update(subdomains)
-    .set({
-      description: description || existingSubdomain.description,
-      record: record ? JSON.stringify(record) : existingSubdomain.record,
-    })
-    .where(eq(subdomains.name, subdomainName))
-    .returning();
+  const updatedSubdomain = await db.updateSubdomain(subdomainName, {
+    ...(description ? { description } : {}),
+    ...(record ? { record: JSON.stringify(record) } : {}),
+  });
+
+  if (!updatedSubdomain) {
+    throw new AppError(404, ErrorCode.SUBDOMAIN_NOT_FOUND, 'Failed to update subdomain');
+  }
 
   const response: UpdateSubdomainResponse = {
-    subdomainId: updatedSubdomain[0].id,
-    subdomainName: updatedSubdomain[0].name,
-    description: updatedSubdomain[0].description,
-    record: JSON.parse(updatedSubdomain[0].record),
-    ownerId: updatedSubdomain[0].ownerId!,
+    subdomainId: updatedSubdomain.id,
+    subdomainName: updatedSubdomain.name,
+    description: updatedSubdomain.description,
+    record: record || JSON.parse(updatedSubdomain.record),
+    ownerId: updatedSubdomain.ownerId!,
   };
 
   return c.json(response);
