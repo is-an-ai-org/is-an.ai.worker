@@ -1,6 +1,5 @@
 import { Context } from 'hono';
 import { AppType } from '@/binding';
-import { AppError, ErrorCode } from '@utils/error';
 import { Github } from '@/utils/github/github';
 import type { Subdomain } from '@/adapters/types';
 import { Record } from '@/utils/github/github.dto';
@@ -28,22 +27,8 @@ export const handleFindAllSubdomain = async (c: Context<AppType>): Promise<Respo
 
   const allGithubSubdomains = await Github.getDomainDeterminationDirectory(githubToken);
 
-  // check if the subdomain exists in GitHub and clean up the DB
-  const validSubdomains = await Promise.all(
-    allSubdomains.map(async (subdomain: Subdomain) => {
-      // if the subdomain does not exist in GitHub, delete it from the DB
-      if (!allGithubSubdomains.includes(subdomain.name)) {
-        await db.deleteSubdomainByName(subdomain.name);
-        return null;
-      }
-
-      return subdomain;
-    })
-  );
-
-  // remove null values and convert to response data
-  const response: SubdomainResponse[] = validSubdomains
-    .filter((subdomain): subdomain is Subdomain => subdomain !== null)
+  const response: SubdomainResponse[] = allSubdomains
+    .filter((subdomain) => allGithubSubdomains.includes(subdomain.name))
     .map((subdomain: Subdomain) => ({
       subdomainId: subdomain.id,
       subdomainName: subdomain.name,

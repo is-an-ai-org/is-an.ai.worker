@@ -120,16 +120,30 @@ test('AWS Lambda entry point, organization settings, database, and S3 upload flo
     }
     assert.equal(target.pathname, '/repos/test-aws-org/is-an.ai/git/trees/main');
     return Response.json({
-      tree: [...domains.keys()].map((name) => ({ path: `records/${name}.json`, type: 'blob' })),
+      tree: [...domains.keys()]
+        .filter((name) => name !== 'unlisted-site')
+        .map((name) => ({ path: `records/${name}.json`, type: 'blob' })),
     });
   });
 
   const login = await handler(event('/v1/user/auth/github'), {});
   assert.equal(login.statusCode, 302);
   assert.equal(new URL(login.headers.location).searchParams.get('client_id'), 'test-client');
+  domains.set('unlisted-site', {
+    id: 'unlisted',
+    name: 'unlisted-site',
+    ownerId: 'test-user',
+    record: '[]',
+  });
   for (const version of ['v1', 'v3']) {
-    assert.equal((await handler(event(`/${version}/domain`), {})).statusCode, 200);
+    const response = await handler(event(`/${version}/domain`), {});
+    assert.equal(response.statusCode, 200);
+    assert.ok(
+      !JSON.parse(response.body).some((domain) => domain.subdomainName === 'unlisted-site')
+    );
+    assert.ok(domains.has('unlisted-site'));
   }
+  domains.delete('unlisted-site');
   assert.equal(
     (await handler(event('/admin/domain-count?email=test@example.com'), {})).statusCode,
     401
