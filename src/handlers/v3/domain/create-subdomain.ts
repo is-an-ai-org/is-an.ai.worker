@@ -7,6 +7,7 @@ import { GithubSubDomain, Record, recordSchema } from '@/utils/github/github.dto
 import { z } from 'zod';
 import { validateSubdomainName } from '@/utils/subdomain';
 import { validateVendorRecords } from '@/utils/vendor';
+import { assertSubdomainLimit } from '@/utils/subdomain-limit';
 
 interface CreateSubdomainRequest {
   subdomainName: string;
@@ -28,8 +29,6 @@ export const createSubdomainRequestSchema = z.object({
   description: z.string(),
   record: z.array(recordSchema),
 });
-
-const USER_MAX_SUBDOMAINS = 5;
 
 export async function handleCreateSubdomain(c: Context<AppType>): Promise<Response> {
   const { subdomainName, description, record } = await c.req.json<CreateSubdomainRequest>();
@@ -85,16 +84,10 @@ export async function handleCreateSubdomain(c: Context<AppType>): Promise<Respon
     }
   }
 
-  const userDomains = await db.findSubdomainsByOwner(user.userId);
-
-  // Vendor subdomains don't count toward the limit
-  const regularDomains = userDomains.filter((d) => !d.name.startsWith('_'));
-  if (!validationResult.isVendor && regularDomains.length >= USER_MAX_SUBDOMAINS) {
-    throw new AppError(
-      400,
-      ErrorCode.MAX_SUBDOMAIN_REACHED,
-      `User has reached the maximum number of domains (${USER_MAX_SUBDOMAINS})`
-    );
+  if (!validationResult.isVendor) {
+    const userDomains = await db.findSubdomainsByOwner(user.userId);
+    const regularDomains = userDomains.filter((d) => !d.name.startsWith('_'));
+    await assertSubdomainLimit(db, user.userId, regularDomains.length);
   }
 
   const subDomain: GithubSubDomain = {

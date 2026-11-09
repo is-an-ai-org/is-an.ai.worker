@@ -5,9 +5,9 @@ import { AppError, ErrorCode } from '@utils/error';
 import { Github } from '@/utils/github/github';
 import { GithubSubDomain, Record as DNSRecord } from '@/utils/github/github.dto';
 import type { IObjectStorage } from '@/adapters/types';
+import { assertSubdomainLimit } from '@/utils/subdomain-limit';
 
 const HOSTING_WORKER_DOMAIN = 'd2t4ubtfjuejkc.cloudfront.net';
-const USER_MAX_SUBDOMAINS = 5;
 
 async function deleteStoragePrefix(storage: IObjectStorage, prefix: string): Promise<void> {
   let cursor: string | undefined;
@@ -55,13 +55,7 @@ export async function handleConfirmHosting(c: Context<AppType>): Promise<Respons
   } else {
     const userDomains = await db.findSubdomainsByOwner(user.userId);
     const regularDomains = userDomains.filter((d) => !d.name.startsWith('_'));
-    if (regularDomains.length >= USER_MAX_SUBDOMAINS) {
-      throw new AppError(
-        400,
-        ErrorCode.MAX_SUBDOMAIN_REACHED,
-        `User has reached the maximum number of domains (${USER_MAX_SUBDOMAINS})`
-      );
-    }
+    await assertSubdomainLimit(db, user.userId, regularDomains.length);
 
     const cnameRecord: DNSRecord[] = [{ type: 'CNAME' as const, value: HOSTING_WORKER_DOMAIN }];
 

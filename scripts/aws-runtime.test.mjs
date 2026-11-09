@@ -88,6 +88,10 @@ test('AWS Lambda entry point, organization settings, database, and S3 upload flo
       { id: 'vendor', name: '_vercel.existing-site', ownerId: 'test-user', record: '[]' },
     ],
   ]);
+  const accounts = [
+    { id: 'test-user', provider: 'github', providerId: '111', email: 'test@example.com' },
+    { id: 'dori-user', provider: 'github', providerId: '30494557', email: 'dori@example.com' },
+  ];
   t.mock.method(DynamoDBDocumentClient.prototype, 'send', async (command) => {
     const input = command.input;
     if (command.constructor.name === 'PutCommand') {
@@ -95,16 +99,31 @@ test('AWS Lambda entry point, organization settings, database, and S3 upload flo
       else assert.equal(input.TableName, 'test-state');
       return {};
     }
+    if (command.constructor.name === 'GetCommand') {
+      assert.equal(input.TableName, 'test-users');
+      return { Item: accounts.find(({ id }) => id === input.Key.id) };
+    }
     assert.ok(['QueryCommand', 'ScanCommand'].includes(command.constructor.name));
-    if (input.TableName === 'test-users') return { Items: [{ id: 'test-user' }] };
+    if (input.TableName === 'test-users') {
+      return {
+        Items: accounts.filter(({ email }) => email === input.ExpressionAttributeValues[':e']),
+      };
+    }
     assert.equal(input.TableName, 'test-domains');
-    const found =
-      input.IndexName === 'name-index'
-        ? [...domains.values()].filter(
-            (domain) => domain.name === input.ExpressionAttributeValues[':n']
-          )
-        : [...domains.values()];
-    return { Items: found };
+    const allDomains = [...domains.values()];
+    if (input.IndexName === 'name-index') {
+      return {
+        Items: allDomains.filter(({ name }) => name === input.ExpressionAttributeValues[':n']),
+      };
+    }
+    if (input.IndexName === 'owner-index') {
+      return {
+        Items: allDomains.filter(
+          ({ ownerId }) => ownerId === input.ExpressionAttributeValues[':o']
+        ),
+      };
+    }
+    return { Items: allDomains };
   });
   const githubWrites = [];
   t.mock.method(globalThis, 'fetch', async (url, options = {}) => {
@@ -189,4 +208,79 @@ test('AWS Lambda entry point, organization settings, database, and S3 upload flo
   assert.equal(record.record[0].value, 'd2t4ubtfjuejkc.cloudfront.net');
   assert.ok(domains.has('new-site'));
   assert.equal(secretReads, 1);
+
+  await t.test('regular accounts get 5 domains and Dori gets 50', async () => {
+    assert.equal((await handler(event('/v3/domain/my/limit'), {})).statusCode, 401);
+
+    const doriJwt = await new SignJWT({ sub: 'dori-user', name: 'Dori' })
+      .setProtectedHeader({ alg: 'RS256' })
+      .setExpirationTime('5m')
+      .sign(privateKey);
+    const doriHeaders = { authorization: `Bearer ${doriJwt}` };
+    for (const [accountHeaders, limit] of [
+      [headers, 5],
+      [doriHeaders, 50],
+    ]) {
+      const result = await handler(
+        event('/v3/domain/my/limit', 'GET', undefined, accountHeaders),
+        {}
+      );
+      assert.equal(result.statusCode, 200);
+      assert.deepEqual(JSON.parse(result.body), { limit });
+    }
+
+    for (const [ownerId, prefix, count] of [
+      ['test-user', 'regular', 3],
+      ['dori-user', 'dori', 49],
+    ]) {
+      for (let i = 0; i < count; i++) {
+        const name = `${prefix}-${i}`;
+        domains.set(name, { id: name, name, ownerId, record: '[]' });
+      }
+    }
+    domains.set('_vercel.dori-0', {
+      id: 'dori-vendor',
+      name: '_vercel.dori-0',
+      ownerId: 'dori-user',
+      record: '[]',
+    });
+
+    const createDomain = (subdomainName, accountHeaders) =>
+      handler(
+        event(
+          '/v3/domain',
+          'POST',
+          {
+            subdomainName,
+            description: '',
+            record: [{ type: 'CNAME', value: 'example.com' }],
+          },
+          accountHeaders
+        ),
+        {}
+      );
+    const regularDenied = await createDomain('regular-extra', headers);
+    assert.equal(regularDenied.statusCode, 400);
+    assert.match(regularDenied.body, /^\[40403\].*\(5\)$/);
+
+    const doriAllowed = await createDomain('dori-extra', doriHeaders);
+    assert.equal(doriAllowed.statusCode, 200);
+    const doriDenied = await createDomain('dori-over-limit', doriHeaders);
+    assert.equal(doriDenied.statusCode, 400);
+    assert.match(doriDenied.body, /^\[40403\].*\(50\)$/);
+    assert.equal(githubWrites.length, 2);
+
+    const adminCount = await handler(
+      event('/admin/domain-count?email=dori@example.com', 'GET', undefined, {
+        'x-admin-key': 'test-admin',
+      }),
+      {}
+    );
+    assert.deepEqual(JSON.parse(adminCount.body), {
+      email: 'dori@example.com',
+      count: 50,
+      limit: 50,
+      allowed: false,
+    });
+  });
 });
