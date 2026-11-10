@@ -2,6 +2,8 @@ import { Hono } from 'hono';
 import { authMiddleware } from '@middlewares/auth';
 import { AppType } from '@/binding';
 import { zValidator } from '@hono/zod-validator';
+import { AppError, ErrorCode } from '@utils/error';
+import { getSubdomainLimit } from '@/utils/subdomain-limit';
 import {
   createSubdomainRequestSchema,
   handleCreateSubdomain,
@@ -23,6 +25,16 @@ domain.get('/name/:subdomainName', handleFindByNameSubdomain);
 
 // Private routes
 domain.get('/my', authMiddleware, handleFindMySubdomain);
+domain.get('/my/limit', authMiddleware, async (c) => {
+  const user = c.get('user');
+  if (!user) {
+    throw new AppError(401, ErrorCode.UNAUTHORIZED, 'Authentication required');
+  }
+
+  const account = await c.get('db').findUserById(user.userId);
+  c.header('Cache-Control', 'private, no-store');
+  return c.json({ limit: getSubdomainLimit(account?.tier) });
+});
 domain.post(
   '/',
   authMiddleware,

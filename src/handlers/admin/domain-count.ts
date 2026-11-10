@@ -1,6 +1,7 @@
 import { Context } from 'hono';
 import { AppType } from '@/binding';
 import { AppError, ErrorCode } from '@utils/error';
+import { getSubdomainLimit } from '@/utils/subdomain-limit';
 
 /**
  * Get subdomain count for a user by email.
@@ -10,8 +11,6 @@ import { AppError, ErrorCode } from '@utils/error';
  * Headers: X-Admin-Key: {ADMIN_API_KEY}
  * Response: { email, count, limit, allowed }
  */
-
-const USER_MAX_SUBDOMAINS = 5;
 
 export async function handleDomainCount(c: Context<AppType>): Promise<Response> {
   const adminKey = c.req.header('X-Admin-Key');
@@ -30,10 +29,11 @@ export async function handleDomainCount(c: Context<AppType>): Promise<Response> 
   const domains = user ? await db.findSubdomainsByOwner(user.id) : [];
   const count = domains.filter((domain) => !domain.name.startsWith('_')).length;
 
+  const limit = getSubdomainLimit(user?.tier);
   return c.json({
     email,
     count,
-    limit: USER_MAX_SUBDOMAINS,
-    allowed: count < USER_MAX_SUBDOMAINS,
+    limit,
+    allowed: count < limit,
   });
 }

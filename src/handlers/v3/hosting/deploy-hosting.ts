@@ -6,13 +6,13 @@ import { validateSubdomainName } from '@/utils/subdomain';
 import { Github } from '@/utils/github/github';
 import { GithubSubDomain, Record as DNSRecord } from '@/utils/github/github.dto';
 import type { IObjectStorage } from '@/adapters/types';
+import { assertSubdomainLimit } from '@/utils/subdomain-limit';
 
 const HOSTING_WORKER_DOMAIN = 'd2t4ubtfjuejkc.cloudfront.net';
 
 const MAX_TOTAL_SIZE = 50 * 1024 * 1024; // 50MB
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const MAX_FILE_COUNT = 1000;
-const USER_MAX_SUBDOMAINS = 5;
 
 const CONTENT_TYPE_MAP: Record<string, string> = {
   html: 'text/html',
@@ -154,13 +154,7 @@ async function deployHosting(c: Context<AppType>, isUpdate: boolean): Promise<Re
 
     const userDomains = await db.findSubdomainsByOwner(user.userId);
     const regularDomains = userDomains.filter((d) => !d.name.startsWith('_'));
-    if (regularDomains.length >= USER_MAX_SUBDOMAINS) {
-      throw new AppError(
-        400,
-        ErrorCode.MAX_SUBDOMAIN_REACHED,
-        `User has reached the maximum number of domains (${USER_MAX_SUBDOMAINS})`
-      );
-    }
+    await assertSubdomainLimit(db, user.userId, regularDomains.length);
   }
 
   const storage = c.get('storage');

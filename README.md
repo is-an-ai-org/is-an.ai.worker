@@ -37,6 +37,12 @@ npm run deploy
 This updates the API function code only. It does not update Lambda environment
 variables, Secrets Manager, Lambda@Edge versions, or CloudFront associations.
 
+Account tiers are stored on items in the existing DynamoDB users table. Before
+replacing a deployment that grants an account a higher limit in code, set that
+account's tier to `pro` on its existing DynamoDB item. Add a dedicated
+`ACCOUNT_TIER_ADMIN_KEY` to the API Lambda's Secrets Manager JSON before using
+the [account tier API](API.md#account-tier-api).
+
 Infrastructure is defined in `infra/`. Before applying infrastructure changes,
 use the existing Terraform state and review the plan. Creating a new empty state
 does not adopt the running resources.

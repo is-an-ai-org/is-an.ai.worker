@@ -2,11 +2,11 @@ import { Context } from 'hono';
 import { AppType } from '@/binding';
 import { AppError, ErrorCode } from '@utils/error';
 import { validateSubdomainName } from '@/utils/subdomain';
+import { assertSubdomainLimit } from '@/utils/subdomain-limit';
 
 const MAX_FILE_COUNT = 1000;
 const MAX_TOTAL_SIZE = 50 * 1024 * 1024; // 50MB
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-const USER_MAX_SUBDOMAINS = 5;
 
 interface FileEntry {
   path: string;
@@ -87,13 +87,7 @@ export async function handlePrepareHosting(c: Context<AppType>): Promise<Respons
 
     const userDomains = await db.findSubdomainsByOwner(user.userId);
     const regularDomains = userDomains.filter((d) => !d.name.startsWith('_'));
-    if (regularDomains.length >= USER_MAX_SUBDOMAINS) {
-      throw new AppError(
-        400,
-        ErrorCode.MAX_SUBDOMAIN_REACHED,
-        `User has reached the maximum number of domains (${USER_MAX_SUBDOMAINS})`
-      );
-    }
+    await assertSubdomainLimit(db, user.userId, regularDomains.length);
   }
 
   const storage = c.get('storage');

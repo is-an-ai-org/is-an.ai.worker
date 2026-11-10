@@ -15,6 +15,7 @@ export enum ErrorCode {
 
   // Database Errors (40200-40299)
   DATABASE_ERROR = 40201,
+  USER_NOT_FOUND = 40202,
 
   // Validation Errors (40300-40399)
   VALIDATION_ERROR = 40301,

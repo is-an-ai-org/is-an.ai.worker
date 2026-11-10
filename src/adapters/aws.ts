@@ -1,4 +1,4 @@
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { ConditionalCheckFailedException, DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
   DynamoDBDocumentClient,
   GetCommand,
@@ -20,6 +20,7 @@ import type {
   IDatabase,
   IStateStore,
   IObjectStorage,
+  AccountTier,
   User,
   Subdomain,
   ObjectBody,
@@ -55,7 +56,7 @@ export class DynamoDatabase implements IDatabase {
 
   async findUserById(id: string): Promise<User | undefined> {
     const result = await this.client.send(
-      new GetCommand({ TableName: this.usersTable, Key: { id } })
+      new GetCommand({ TableName: this.usersTable, Key: { id }, ConsistentRead: true })
     );
     return result.Item as User | undefined;
   }
@@ -73,11 +74,30 @@ export class DynamoDatabase implements IDatabase {
     return result.Items?.[0] as User | undefined;
   }
 
-  async createUser(user: Omit<User, 'createdAt' | 'updatedAt'>): Promise<User> {
+  async createUser(user: Omit<User, 'tier' | 'createdAt' | 'updatedAt'>): Promise<User> {
     const now = new Date().toISOString();
-    const item: User = { ...user, createdAt: now, updatedAt: now };
+    const item: User = { ...user, tier: 'free', createdAt: now, updatedAt: now };
     await this.client.send(new PutCommand({ TableName: this.usersTable, Item: item }));
     return item;
+  }
+
+  async setUserTier(id: string, tier: AccountTier): Promise<boolean> {
+    try {
+      await this.client.send(
+        new UpdateCommand({
+          TableName: this.usersTable,
+          Key: { id },
+          ConditionExpression: 'attribute_exists(id)',
+          UpdateExpression: 'SET #tier = :tier, updatedAt = :now',
+          ExpressionAttributeNames: { '#tier': 'tier' },
+          ExpressionAttributeValues: { ':tier': tier, ':now': new Date().toISOString() },
+        })
+      );
+      return true;
+    } catch (error) {
+      if (error instanceof ConditionalCheckFailedException) return false;
+      throw error;
+    }
   }
 
   async findAllSubdomains(): Promise<Subdomain[]> {
