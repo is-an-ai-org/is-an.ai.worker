@@ -46,9 +46,13 @@ export async function handleDeviceAuth(c: Context<AppType>): Promise<Response> {
   const githubUser = (await ghResponse.json()) as GitHubUserResponse;
 
   const db = c.get('db');
+  const githubId = githubUser.id.toString();
+  if (await db.isGitHubUserBanned(githubId)) {
+    throw new AppError(403, ErrorCode.ACCOUNT_BANNED, 'Account is banned');
+  }
 
   // Find or create user (same logic as OAuth callback)
-  const existingUser = await db.findUserByProviderId(githubUser.id.toString());
+  const existingUser = await db.findUserByProviderId(githubId);
 
   let userId: string;
   let userName: string;
@@ -65,7 +69,7 @@ export async function handleDeviceAuth(c: Context<AppType>): Promise<Response> {
       name: githubUser.name || githubUser.login,
       email,
       provider: 'github',
-      providerId: githubUser.id.toString(),
+      providerId: githubId,
       hashedPassword: null,
     });
 

@@ -1,3 +1,4 @@
+import { Github } from '@/utils/github/github';
 import { Context } from 'hono';
 import { AppType } from '@/binding';
 import { AppError, ErrorCode } from '@utils/error';
@@ -79,6 +80,7 @@ export async function handlePrepareHosting(c: Context<AppType>): Promise<Respons
         "You don't have permission to update this hosting"
       );
     }
+    await Github.assertHostedDomainActive(existingSubdomain.name, c.env);
   } else {
     const validationResult = validateSubdomainName(name);
     if (!validationResult.isValid && validationResult.error) {

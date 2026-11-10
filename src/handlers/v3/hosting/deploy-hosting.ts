@@ -142,6 +142,7 @@ async function deployHosting(c: Context<AppType>, isUpdate: boolean): Promise<Re
         "You don't have permission to update this hosting"
       );
     }
+    await Github.assertHostedDomainActive(existingSubdomain.name, c.env);
   } else {
     if (existingSubdomain) {
       throw new AppError(400, ErrorCode.HOSTING_ALREADY_EXISTS, 'Subdomain already exists');

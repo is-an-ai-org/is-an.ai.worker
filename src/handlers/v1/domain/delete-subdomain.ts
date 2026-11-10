@@ -41,6 +41,8 @@ export const handleDeleteSubdomain = async (c: Context<AppType>): Promise<Respon
   }
 
   // GitHub에서 파일 삭제
+  Github.assertDomainActive(githubContent.subDomain);
+
   await Github.deleteDomainDeterminationContent(subdomainName, githubToken, githubContent.sha);
 
   // DB에서 삭제

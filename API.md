@@ -34,6 +34,19 @@ GET /v1/user/auth/jwks
 }
 ```
 
+## Moderation API
+
+Send the moderator key in `X-Admin-Key`. Both operations accept the desired state as a boolean and return the saved state. Use `false` to reverse either action.
+
+| Operation | Body | Effect |
+| --- | --- | --- |
+| `PUT /admin/domains/:name/suspension` | `{"suspended":true}` | Suspend a registered subdomain using its name without `.is-an.ai`. Keep the existing owner and DNS settings. |
+| `PUT /admin/github-users/:githubId/ban` | `{"banned":true}` | Block GitHub sign-in and authenticated API requests, including requests with an existing token. The ban also applies to PR-only users. |
+
+DNS suspension and restoration take effect after the DNS workflow propagates the change. A ban leaves the account's DNS records in place. Use a separate suspension for each domain that needs to go offline.
+
+The GitHub PR workflow checks `GET /admin/github-users/:githubId/ban` with the dedicated `PR_MODERATION_KEY`. It receives `204` for an allowed account and `403` for a banned account. A missing or invalid key returns `401`. The read key has no write permissions.
+
 ## Account tier API
 
 Account tiers determine the number of subdomains an account can register. `free` allows 5 and `pro` allows 50. Existing accounts without a stored tier are treated as `free`.

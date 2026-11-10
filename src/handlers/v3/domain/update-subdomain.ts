@@ -74,6 +74,8 @@ export const handleUpdateSubdomain = async (c: Context<AppType>): Promise<Respon
     );
   }
 
+  Github.assertDomainActive(githubContent.subDomain);
+
   const updatedSubDomain: GithubSubDomain = {
     description: description || existingSubdomain.description,
     owner: {

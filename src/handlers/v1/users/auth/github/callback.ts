@@ -108,9 +108,13 @@ export async function handleGitHubCallback(c: Context<AppType>): Promise<Respons
 
     // 2. Get user info
     const githubUser = await getGitHubUser(accessToken);
+    const githubId = githubUser.id.toString();
+    if (await db.isGitHubUserBanned(githubId)) {
+      return c.redirect(`${c.env.FRONTEND_URL}/auth/callback?error=Account%20is%20banned`);
+    }
 
     // 3. Find or create user
-    const existingUser = await db.findUserByProviderId(githubUser.id.toString());
+    const existingUser = await db.findUserByProviderId(githubId);
 
     let userId: string;
     let userName: string;
@@ -124,7 +128,7 @@ export async function handleGitHubCallback(c: Context<AppType>): Promise<Respons
         name: githubUser.name || githubUser.login,
         email: githubUser.email || `${githubUser.login}@users.noreply.github.com`,
         provider: 'github',
-        providerId: githubUser.id.toString(),
+        providerId: githubId,
         hashedPassword: null,
       });
 

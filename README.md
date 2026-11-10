@@ -43,6 +43,13 @@ account's tier to `pro` on its existing DynamoDB item. Add a dedicated
 `ACCOUNT_TIER_ADMIN_KEY` to the API Lambda's Secrets Manager JSON before using
 the [account tier API](API.md#account-tier-api).
 
+Deploy the moderation API before rolling out the DNS repository changes. Set
+the same `PR_MODERATION_KEY` in the API Lambda's Secrets Manager JSON and the
+DNS repository's Actions secrets before merging the DNS changes. Set the
+separate `MODERATION_API_KEY` in Secrets Manager after the DNS changes are live.
+Reinitialize the API Lambda after changing its Secrets Manager values so it
+loads the new keys. See the [moderation API](API.md#moderation-api).
+
 Infrastructure is defined in `infra/`. Before applying infrastructure changes,
 use the existing Terraform state and review the plan. Creating a new empty state
 does not adopt the running resources.
