@@ -1,5 +1,8 @@
 // Database adapter interfaces
 
+export const ACCOUNT_TIERS = ['free', 'pro'] as const;
+export type AccountTier = (typeof ACCOUNT_TIERS)[number];
+
 export interface User {
   id: string;
   name: string;
@@ -7,6 +10,7 @@ export interface User {
   provider: string;
   providerId: string;
   hashedPassword: string | null;
+  tier?: AccountTier;
   createdAt: string;
   updatedAt: string;
 }
@@ -26,7 +30,8 @@ export interface IDatabase {
   findUserByProviderId(providerId: string): Promise<User | undefined>;
   findUserById(id: string): Promise<User | undefined>;
   findUserByEmail(email: string): Promise<User | undefined>;
-  createUser(user: Omit<User, 'createdAt' | 'updatedAt'>): Promise<User>;
+  createUser(user: Omit<User, 'tier' | 'createdAt' | 'updatedAt'>): Promise<User>;
+  setUserTier(id: string, tier: AccountTier): Promise<boolean>;
 
   // Subdomains
   findAllSubdomains(): Promise<Subdomain[]>;

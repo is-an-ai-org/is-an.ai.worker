@@ -33,7 +33,7 @@ domain.get('/my/limit', authMiddleware, async (c) => {
 
   const account = await c.get('db').findUserById(user.userId);
   c.header('Cache-Control', 'private, no-store');
-  return c.json({ limit: getSubdomainLimit(account) });
+  return c.json({ limit: getSubdomainLimit(account?.tier) });
 });
 domain.post(
   '/',

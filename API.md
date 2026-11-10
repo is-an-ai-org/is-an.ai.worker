@@ -34,6 +34,22 @@ GET /v1/user/auth/jwks
 }
 ```
 
+## Account tier API
+
+Account tiers determine the number of subdomains an account can register. `free` allows 5 and `pro` allows 50. Existing accounts without a stored tier are treated as `free`.
+
+Use the internal is-an.ai user ID to set a tier. Send the dedicated `ACCOUNT_TIER_ADMIN_KEY` from AWS Secrets Manager in `X-Admin-Key`. Repeating a request with the same tier leaves the account at that tier. Downgrading blocks new registrations at the lower limit and keeps existing registrations.
+
+```http
+PUT /admin/users/:userId/tier
+Content-Type: application/json
+X-Admin-Key: <account-tier-admin-key>
+
+{"tier":"pro"}
+```
+
+The API returns `200` with `{"userId":"...","tier":"pro","limit":50}`, `400` for an invalid body, `401` for a missing or invalid key, and `404` when the user does not exist. The authenticated `GET /v3/domain/my/limit` returns the caller's effective limit as `{"limit":50}`.
+
 ## 개발 환경 API
 
 ### 개발자 로그인

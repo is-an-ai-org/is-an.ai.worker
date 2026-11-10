@@ -29,7 +29,7 @@ export async function handleDomainCount(c: Context<AppType>): Promise<Response> 
   const domains = user ? await db.findSubdomainsByOwner(user.id) : [];
   const count = domains.filter((domain) => !domain.name.startsWith('_')).length;
 
-  const limit = getSubdomainLimit(user);
+  const limit = getSubdomainLimit(user?.tier);
   return c.json({
     email,
     count,

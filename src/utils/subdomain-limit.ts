@@ -1,20 +1,19 @@
-import type { IDatabase, User } from '@/adapters/types';
+import type { AccountTier, IDatabase } from '@/adapters/types';
 import { AppError, ErrorCode } from '@utils/error';
 
-const DEFAULT_SUBDOMAIN_LIMIT = 5;
-const DORI_GITHUB_ID = '30494557';
-const DORI_SUBDOMAIN_LIMIT = 50;
+const SUBDOMAIN_LIMITS: Record<AccountTier, number> = { free: 5, pro: 50 };
 
-export function getSubdomainLimit(user: User | undefined): number {
-  return user?.provider === 'github' && user.providerId === DORI_GITHUB_ID
-    ? DORI_SUBDOMAIN_LIMIT
-    : DEFAULT_SUBDOMAIN_LIMIT;
+export function getSubdomainLimit(tier: AccountTier | undefined): number {
+  return tier && Object.hasOwn(SUBDOMAIN_LIMITS, tier)
+    ? SUBDOMAIN_LIMITS[tier]
+    : SUBDOMAIN_LIMITS.free;
 }
 
 export async function assertSubdomainLimit(db: IDatabase, userId: string, count: number) {
-  if (count < DEFAULT_SUBDOMAIN_LIMIT) return;
+  if (count < SUBDOMAIN_LIMITS.free) return;
 
-  const limit = getSubdomainLimit(await db.findUserById(userId));
+  const user = await db.findUserById(userId);
+  const limit = getSubdomainLimit(user?.tier);
   if (count >= limit) {
     throw new AppError(
       400,
