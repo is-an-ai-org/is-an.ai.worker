@@ -32,6 +32,8 @@ export interface IDatabase {
   findUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: Omit<User, 'tier' | 'createdAt' | 'updatedAt'>): Promise<User>;
   setUserTier(id: string, tier: AccountTier): Promise<boolean>;
+  isGitHubUserBanned(githubId: string): Promise<boolean>;
+  setGitHubUserBan(githubId: string, banned: boolean): Promise<void>;
 
   // Subdomains
   findAllSubdomains(): Promise<Subdomain[]>;

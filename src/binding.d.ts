@@ -32,6 +32,8 @@ export type Bindings = {
   JWT_PUBLIC_KEY: string;
   ADMIN_API_KEY: string;
   ACCOUNT_TIER_ADMIN_KEY?: string;
+  MODERATION_API_KEY?: string;
+  PR_MODERATION_KEY?: string;
 };
 
 export type Variables = {

@@ -6,6 +6,7 @@ export interface GithubSubDomain {
   description: string;
   owner: Owner;
   record: Record[];
+  suspended?: boolean;
 }
 
 export interface Owner {

@@ -100,6 +100,26 @@ export class DynamoDatabase implements IDatabase {
     }
   }
 
+  async isGitHubUserBanned(githubId: string): Promise<boolean> {
+    const result = await this.client.send(
+      new GetCommand({
+        TableName: this.usersTable,
+        Key: { id: `github-ban#${githubId}` },
+        ConsistentRead: true,
+      })
+    );
+    return !!result.Item;
+  }
+
+  async setGitHubUserBan(githubId: string, banned: boolean): Promise<void> {
+    const id = `github-ban#${githubId}`;
+    if (banned) {
+      await this.client.send(new PutCommand({ TableName: this.usersTable, Item: { id } }));
+    } else {
+      await this.client.send(new DeleteCommand({ TableName: this.usersTable, Key: { id } }));
+    }
+  }
+
   async findAllSubdomains(): Promise<Subdomain[]> {
     const items: Subdomain[] = [];
     let lastKey: Record<string, any> | undefined;

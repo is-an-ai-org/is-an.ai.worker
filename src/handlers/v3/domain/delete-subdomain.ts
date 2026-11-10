@@ -42,6 +42,8 @@ export const handleDeleteSubdomain = async (c: Context<AppType>): Promise<Respon
     );
   }
 
+  Github.assertDomainActive(githubContent.subDomain);
+
   await Github.deleteDomainDeterminationContent(subdomainName, githubToken, githubContent.sha);
 
   await db.deleteSubdomainByName(subdomainName);

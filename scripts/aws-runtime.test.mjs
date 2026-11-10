@@ -77,6 +77,8 @@ test('AWS Lambda entry point, organization settings, database, and S3 upload flo
         GITHUB_APP_SECRET: pem,
         ADMIN_API_KEY: 'test-admin',
         ACCOUNT_TIER_ADMIN_KEY: 'test-tier-admin',
+        MODERATION_API_KEY: 'test-moderation-admin',
+        PR_MODERATION_KEY: 'test-moderation-read',
       }),
     };
   });
@@ -94,17 +96,27 @@ test('AWS Lambda entry point, organization settings, database, and S3 upload flo
     { id: 'test-user', provider: 'github', providerId: '111', email: 'test@example.com' },
     { id: 'second-user', provider: 'github', providerId: '222', email: 'second@example.com' },
   ];
+  const bans = new Map();
   t.mock.method(DynamoDBDocumentClient.prototype, 'send', async (command) => {
     const input = command.input;
     if (command.constructor.name === 'PutCommand') {
       if (input.TableName === 'test-domains') domains.set(input.Item.name, input.Item);
-      else assert.equal(input.TableName, 'test-state');
+      else if (input.TableName === 'test-users') {
+        assert.match(input.Item.id, /^github-ban#[0-9]+$/);
+        bans.set(input.Item.id, input.Item);
+      } else assert.equal(input.TableName, 'test-state');
+      return {};
+    }
+    if (command.constructor.name === 'DeleteCommand') {
+      assert.equal(input.TableName, 'test-users');
+      assert.match(input.Key.id, /^github-ban#[0-9]+$/);
+      bans.delete(input.Key.id);
       return {};
     }
     if (command.constructor.name === 'GetCommand') {
       assert.equal(input.TableName, 'test-users');
       assert.equal(input.ConsistentRead, true);
-      return { Item: accounts.find(({ id }) => id === input.Key.id) };
+      return { Item: accounts.find(({ id }) => id === input.Key.id) ?? bans.get(input.Key.id) };
     }
     if (command.constructor.name === 'UpdateCommand') {
       assert.equal(input.TableName, 'test-users');
@@ -137,13 +149,37 @@ test('AWS Lambda entry point, organization settings, database, and S3 upload flo
     return { Items: allDomains };
   });
   const githubWrites = [];
+  const originalRecord = {
+    description: 'An existing DNS record',
+    owner: { github_username: 'test-user', email: 'test@example.com' },
+    record: [{ type: 'CNAME', value: 'example.com' }],
+  };
+  let githubRecord = originalRecord;
+  let githubRecordVersion = 0;
   t.mock.method(globalThis, 'fetch', async (url, options = {}) => {
     const target = new URL(url);
     assert.equal(target.hostname, 'api.github.com');
     if (target.pathname === '/app/installations/123/access_tokens') {
       return Response.json({ token: 'test-github-token' });
     }
+    if (target.pathname === '/user') return Response.json({ id: 111, login: 'test-user' });
     assert.ok(target.pathname.startsWith('/repos/test-aws-org/is-an.ai/'));
+    if (target.pathname.endsWith('/contents/records/existing-site.json')) {
+      const sha = `existing-${githubRecordVersion}`;
+      if (!options.method) {
+        return Response.json({
+          content: Buffer.from(JSON.stringify(githubRecord)).toString('base64'),
+          encoding: 'base64',
+          sha,
+        });
+      }
+      assert.equal(options.method, 'PUT');
+      const update = JSON.parse(options.body);
+      assert.equal(update.sha, sha);
+      githubRecord = JSON.parse(Buffer.from(update.content, 'base64').toString());
+      githubRecordVersion++;
+      return Response.json({});
+    }
     if (options.method === 'PUT') {
       githubWrites.push(JSON.parse(options.body));
       return Response.json({});
@@ -314,6 +350,106 @@ test('AWS Lambda entry point, organization settings, database, and S3 upload flo
       assert.equal((await setTier('second-user', 'free')).statusCode, 200);
       assert.equal(await readLimit(secondHeaders), 5);
       assert.ok(domains.has('pro-extra'));
+    }
+  );
+
+  const moderationHeaders = { 'x-admin-key': 'test-moderation-admin' };
+  const prCheckHeaders = { 'x-admin-key': 'test-moderation-read' };
+  await t.test('ban and unban take effect on existing tokens and PR checks', async () => {
+    const path = '/admin/github-users/111/ban';
+    assert.equal(
+      (await handler(event(path, 'GET', undefined, prCheckHeaders), {})).statusCode,
+      204
+    );
+    assert.equal(
+      (await handler(event(path, 'PUT', { banned: true }, prCheckHeaders), {})).statusCode,
+      401
+    );
+    assert.equal(
+      (await handler(event(path, 'PUT', { banned: 'true' }, moderationHeaders), {})).statusCode,
+      400
+    );
+    assert.equal(
+      (await handler(event(path, 'PUT', { banned: true }, moderationHeaders), {})).statusCode,
+      200
+    );
+    assert.equal(
+      (await handler(event(path, 'GET', undefined, prCheckHeaders), {})).statusCode,
+      403
+    );
+    assert.equal(
+      (await handler(event('/v3/domain/my/limit', 'GET', undefined, headers), {})).statusCode,
+      403
+    );
+    const deviceLogin = event('/v1/user/auth/github/device', 'POST', {
+      github_access_token: 'test-oauth',
+    });
+    assert.equal((await handler(deviceLogin, {})).statusCode, 403);
+
+    assert.equal(
+      (await handler(event(path, 'PUT', { banned: false }, moderationHeaders), {})).statusCode,
+      200
+    );
+    assert.equal(
+      (await handler(event('/v3/domain/my/limit', 'GET', undefined, headers), {})).statusCode,
+      200
+    );
+    assert.equal(
+      (await handler(event(path, 'GET', undefined, prCheckHeaders), {})).statusCode,
+      204
+    );
+  });
+
+  await t.test(
+    'suspension preserves registration data and blocks owner writes until restored',
+    async () => {
+      const path = '/admin/domains/EXISTING-SITE/suspension';
+      const registration = domains.get('existing-site');
+      assert.equal(
+        (await handler(event(path, 'PUT', { suspended: true }, prCheckHeaders), {})).statusCode,
+        401
+      );
+      const suspended = await handler(
+        event(path, 'PUT', { suspended: true }, moderationHeaders),
+        {}
+      );
+      assert.equal(suspended.statusCode, 200);
+      assert.deepEqual(JSON.parse(suspended.body), { name: 'existing-site', suspended: true });
+      assert.deepEqual(githubRecord, { ...originalRecord, suspended: true });
+      assert.equal(
+        (await handler(event(path, 'PUT', { suspended: true }, moderationHeaders), {})).statusCode,
+        200
+      );
+      assert.equal(githubRecordVersion, 1);
+
+      for (const version of ['v1', 'v3']) {
+        const domainPath = `/${version}/domain/existing-site`;
+        assert.equal(
+          (await handler(event(domainPath, 'PUT', { description: 'change' }, headers), {}))
+            .statusCode,
+          403
+        );
+        assert.equal(
+          (await handler(event(domainPath, 'DELETE', undefined, headers), {})).statusCode,
+          403
+        );
+      }
+      assert.equal(
+        (await handler(event('/v3/hosting/existing-site/prepare', 'POST', { files }, headers), {}))
+          .statusCode,
+        403
+      );
+      assert.equal(
+        (await handler(event('/v3/hosting/existing-site', 'DELETE', undefined, headers), {}))
+          .statusCode,
+        403
+      );
+      assert.equal(
+        (await handler(event(path, 'PUT', { suspended: false }, moderationHeaders), {})).statusCode,
+        200
+      );
+      assert.deepEqual(githubRecord, originalRecord);
+      assert.equal(domains.get('existing-site'), registration);
     }
   );
 });

@@ -38,10 +38,6 @@ export async function handleDeleteHosting(c: Context<AppType>): Promise<Response
     );
   }
 
-  // Delete storage files
-  const storage = c.get('storage');
-  await deleteStoragePrefix(storage, `sites/${name}/`);
-
   // Delete GitHub record file (triggers CI -> PowerDNS -> HE)
   const githubToken = await Github.createTokenforGitHubApp(
     c.env.GITHUB_APP_SECRET,
@@ -49,10 +45,22 @@ export async function handleDeleteHosting(c: Context<AppType>): Promise<Response
     c.env.GITHUB_APP_INSTALLATION_ID
   );
 
-  const githubContent = await Github.getDomainDeterminationContent(name, githubToken);
+  const githubContent = await Github.getDomainDeterminationContent(
+    existingSubdomain.name,
+    githubToken
+  );
   if (githubContent) {
-    await Github.deleteDomainDeterminationContent(name, githubToken, githubContent.sha);
+    Github.assertDomainActive(githubContent.subDomain);
+    await Github.deleteDomainDeterminationContent(
+      existingSubdomain.name,
+      githubToken,
+      githubContent.sha
+    );
   }
+
+  // Delete storage files
+  const storage = c.get('storage');
+  await deleteStoragePrefix(storage, `sites/${name}/`);
 
   await db.deleteSubdomainByName(name);
 

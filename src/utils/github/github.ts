@@ -204,6 +204,29 @@ export class Github {
     }
   }
 
+  static assertDomainActive(content: GithubSubDomain | undefined): void {
+    if (content?.suspended === true) {
+      throw new AppError(403, ErrorCode.SUBDOMAIN_SUSPENDED, 'Subdomain is suspended');
+    }
+  }
+
+  static async assertHostedDomainActive(
+    name: string,
+    env: {
+      GITHUB_APP_SECRET: string;
+      GITHUB_APP_CLIENT_ID: string;
+      GITHUB_APP_INSTALLATION_ID: string;
+    }
+  ): Promise<void> {
+    const token = await Github.createTokenforGitHubApp(
+      env.GITHUB_APP_SECRET,
+      env.GITHUB_APP_CLIENT_ID,
+      env.GITHUB_APP_INSTALLATION_ID
+    );
+    const record = await Github.getDomainDeterminationContent(name, token);
+    Github.assertDomainActive(record?.subDomain);
+  }
+
   static async updateDomainDeterminationContent(
     subDomainName: string,
     content: GithubSubDomain,
@@ -445,7 +468,7 @@ export class Github {
       const subdomains = treeResponse.tree
         .filter((file) => file.path.startsWith(`${Github.basePath}/`))
         .filter((file) => file.type === 'blob' && file.path.endsWith('.json'))
-        .map((file) => file.path.substring(Github.basePath.length + 1).replace('.json', ''));
+        .map((file) => file.path.slice(Github.basePath.length + 1, -'.json'.length));
 
       return subdomains;
     } catch (error: any) {

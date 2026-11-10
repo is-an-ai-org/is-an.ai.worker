@@ -51,6 +51,7 @@ export async function handleConfirmHosting(c: Context<AppType>): Promise<Respons
         "You don't have permission to update this hosting"
       );
     }
+    await Github.assertHostedDomainActive(existingSubdomain.name, c.env);
     await db.updateSubdomain(name, {});
   } else {
     const userDomains = await db.findSubdomainsByOwner(user.userId);
