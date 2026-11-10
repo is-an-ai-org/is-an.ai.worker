@@ -5,7 +5,7 @@ import { nanoid } from 'nanoid';
 import { AppError, ErrorCode } from '@utils/error';
 import { eq, sql } from 'drizzle-orm';
 import { Github } from '@/utils/github/github';
-import { GithubSubDomain, Record, recordSchema } from '@/utils/github/github.dto';
+import { GithubSubDomain, Record, inputRecordSchema } from '@/utils/github/github.dto';
 import { z } from 'zod';
 import { validateSubdomainName } from '@/utils/subdomain';
 import { validateVendorRecords } from '@/utils/vendor';
@@ -28,7 +28,7 @@ interface CreateSubdomainResponse {
 export const createSubdomainRequestSchema = z.object({
   subdomainName: z.string(),
   description: z.string(),
-  record: z.array(recordSchema),
+  record: z.array(inputRecordSchema),
 });
 
 const USER_MAX_SUBDOMAINS = 5;

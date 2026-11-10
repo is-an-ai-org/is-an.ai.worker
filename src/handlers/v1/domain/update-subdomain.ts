@@ -7,7 +7,7 @@ import { eq } from 'drizzle-orm';
 import { Github } from '@/utils/github/github';
 import { GithubSubDomain, Record } from '@/utils/github/github.dto';
 import { z } from 'zod';
-import { recordSchema } from '@/utils/github/github.dto';
+import { inputRecordSchema } from '@/utils/github/github.dto';
 
 interface UpdateSubdomainRequest {
   description?: string;
@@ -25,7 +25,7 @@ interface UpdateSubdomainResponse {
 // Zod Schemas
 export const updateSubdomainRequestSchema = z.object({
   description: z.string().optional(),
-  record: z.array(recordSchema).optional(),
+  record: z.array(inputRecordSchema).optional(),
 });
 
 export const handleUpdateSubdomain = async (c: Context<AppType>): Promise<Response> => {

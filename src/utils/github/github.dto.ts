@@ -99,6 +99,30 @@ export const recordSchema = z.discriminatedUnion('type', [
   }),
 ]);
 
+// 누구나 경로 아래에 파일을 올릴 수 있는 공용 호스트. 여기를 CNAME 으로 가리키면
+// 레코드 소유자와 무관하게 아무 GitHub 사용자의 업로드가 *.is-an.ai 주소로 보인다
+// (Netcraft 93584398: 2.is-an.ai -> github.com 릴리스의 악성 MSI).
+// 레코드 저장소 validate-pr.ts 의 SHARED_HOST_TARGETS 와 같은 목록이다.
+export const sharedHostTargets = [
+  'github.com',
+  'www.github.com',
+  'gist.github.com',
+  'codeload.github.com',
+  'raw.githubusercontent.com',
+  'objects.githubusercontent.com',
+  'githubusercontent.com',
+  'github.io',
+  'gitlab.com',
+  'www.gitlab.com',
+  'bitbucket.org',
+];
+
+// 생성·수정 입력 전용. 조회는 recordSchema 로 파싱해 기존 레코드를 깨지 않는다.
+export const inputRecordSchema = recordSchema.refine(
+  (r) => r.type !== 'CNAME' || !sharedHostTargets.includes(r.value.toLowerCase().replace(/\.$/, '')),
+  { message: 'CNAME cannot point to a shared host — use your own host (e.g. <user>.github.io)' },
+);
+
 export const githubSubDomainSchema = z.object({
   description: z.string(),
   owner: ownerSchema,
