@@ -3,7 +3,7 @@ import { AppType } from '@/binding';
 import { nanoid } from 'nanoid';
 import { AppError, ErrorCode } from '@utils/error';
 import { Github } from '@/utils/github/github';
-import { GithubSubDomain, Record, recordSchema } from '@/utils/github/github.dto';
+import { GithubSubDomain, Record, recordArraySchema } from '@/utils/github/github.dto';
 import { z } from 'zod';
 import { validateSubdomainName } from '@/utils/subdomain';
 import { validateVendorRecords } from '@/utils/vendor';
@@ -27,7 +27,7 @@ interface CreateSubdomainResponse {
 export const createSubdomainRequestSchema = z.object({
   subdomainName: z.string(),
   description: z.string(),
-  record: z.array(recordSchema),
+  record: recordArraySchema,
 });
 
 export async function handleCreateSubdomain(c: Context<AppType>): Promise<Response> {

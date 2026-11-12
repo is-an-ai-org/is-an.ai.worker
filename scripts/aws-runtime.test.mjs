@@ -198,6 +198,37 @@ test('AWS Lambda entry point, organization settings, database, and S3 upload flo
     .setExpirationTime('5m')
     .sign(privateKey);
   const headers = { authorization: `Bearer ${jwt}` };
+  await t.test(
+    'domain create and update routes reject duplicate records before writing',
+    async () => {
+      const txt = { type: 'TXT', value: 'kata-verify=duplicate' };
+      const writesBefore = githubWrites.length;
+      for (const [method, path] of [
+        ['POST', '/v1/domain'],
+        ['POST', '/v2/domain'],
+        ['POST', '/v3/domain'],
+        ['PUT', '/v1/domain/existing-site'],
+        ['PUT', '/v3/domain/existing-site'],
+      ]) {
+        const result = await handler(
+          event(
+            path,
+            method,
+            {
+              subdomainName: 'duplicate-site',
+              description: '',
+              record: [txt, txt],
+            },
+            headers
+          ),
+          {}
+        );
+        assert.equal(result.statusCode, 400, result.body);
+        assert.match(result.body, /Duplicate DNS record/);
+      }
+      assert.equal(githubWrites.length, writesBefore);
+    }
+  );
   const files = [{ path: 'index.html', size: 5, contentType: 'text/html' }];
   const prepared = await handler(
     event('/v3/hosting/new-site/prepare', 'POST', { files }, headers),
@@ -315,5 +346,38 @@ test('AWS Lambda entry point, organization settings, database, and S3 upload flo
       assert.equal(await readLimit(secondHeaders), 5);
       assert.ok(domains.has('pro-extra'));
     }
+  );
+});
+
+test('record arrays keep distinct values and reject duplicate MX entries', async () => {
+  buildSync({
+    entryPoints: ['src/utils/github/github.dto.ts'],
+    bundle: true,
+    platform: 'node',
+    format: 'cjs',
+    outfile: 'dist/test-record-schema.cjs',
+  });
+  const { recordArraySchema } = await import('../dist/test-record-schema.cjs');
+  assert.equal(
+    recordArraySchema.safeParse([
+      { type: 'TXT', value: 'first' },
+      { type: 'TXT', value: 'second' },
+      { type: 'CNAME', value: 'example.com' },
+      { type: 'TXT', value: 'example.com' },
+    ]).success,
+    true
+  );
+  const mx = { preference: 10, exchange: 'mail.example.com' };
+  for (const records of [
+    [{ type: 'MX', value: [mx, mx] }],
+    [
+      { type: 'MX', value: [mx] },
+      { type: 'MX', value: [mx] },
+    ],
+  ])
+    assert.equal(recordArraySchema.safeParse(records).success, false);
+  assert.equal(
+    recordArraySchema.safeParse([{ type: 'MX', value: [mx, { ...mx, preference: 20 }] }]).success,
+    true
   );
 });
