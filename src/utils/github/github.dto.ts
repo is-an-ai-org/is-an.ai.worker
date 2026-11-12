@@ -99,10 +99,31 @@ export const recordSchema = z.discriminatedUnion('type', [
   }),
 ]);
 
+export const recordArraySchema = z.array(recordSchema).superRefine((records, ctx) => {
+  const seen = new Set<string>();
+  records.forEach((record, index) => {
+    const values =
+      record.type === 'MX'
+        ? record.value.map(({ preference, exchange }) => JSON.stringify([preference, exchange]))
+        : [record.value];
+    for (const value of values) {
+      const key = JSON.stringify([record.type, value]);
+      if (seen.has(key)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [index, 'value'],
+          message: 'Duplicate DNS record',
+        });
+      }
+      seen.add(key);
+    }
+  });
+});
+
 export const githubSubDomainSchema = z.object({
   description: z.string(),
   owner: ownerSchema,
-  record: z.array(recordSchema),
+  record: recordArraySchema,
 });
 
 export const batchSearchResultSchema = z.object({
